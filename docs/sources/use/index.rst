@@ -1,6 +1,6 @@
-:title: docker documentation
+:title: Documentation
 :description: -- todo: change me
-:keywords: todo: change me
+:keywords: todo, docker, documentation, basic, builder
 
 
 
@@ -15,4 +15,5 @@ Contents:
    basics
    workingwithrepository
    builder
+   puppet
 

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/dotcloud/docker/utils"
 	"io"
 	"log"
 	"net"
@@ -51,7 +52,7 @@ func ipToInt(ip net.IP) int32 {
 }
 
 // Converts 32 bit integer into a 4 bytes IP address
-func intToIp(n int32) net.IP {
+func intToIP(n int32) net.IP {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, uint32(n))
 	return net.IP(b)
@@ -97,7 +98,7 @@ func checkRouteOverlaps(dockerNetwork *net.IPNet) error {
 	if err != nil {
 		return err
 	}
-	Debugf("Routes:\n\n%s", output)
+	utils.Debugf("Routes:\n\n%s", output)
 	for _, line := range strings.Split(output, "\n") {
 		if strings.Trim(line, "\r\n\t ") == "" || strings.Contains(line, "default") {
 			continue
@@ -126,14 +127,13 @@ func CreateBridgeIface(ifaceName string) error {
 			ifaceAddr = addr
 			break
 		} else {
-			Debugf("%s: %s", addr, err)
+			utils.Debugf("%s: %s", addr, err)
 		}
 	}
 	if ifaceAddr == "" {
 		return fmt.Errorf("Could not find a free IP address range for interface '%s'. Please configure its address manually and run 'docker -b %s'", ifaceName, ifaceName)
-	} else {
-		Debugf("Creating bridge %s with network %s", ifaceName, ifaceAddr)
 	}
+	utils.Debugf("Creating bridge %s with network %s", ifaceName, ifaceAddr)
 
 	if output, err := ip("link", "add", ifaceName, "type", "bridge"); err != nil {
 		return fmt.Errorf("Error creating bridge: %s (output: %s)", err, output)
@@ -239,25 +239,25 @@ func (mapper *PortMapper) Map(port int, dest net.TCPAddr) error {
 // proxy listens for socket connections on `listener`, and forwards them unmodified
 // to `proto:address`
 func proxy(listener net.Listener, proto, address string) error {
-	Debugf("proxying to %s:%s", proto, address)
-	defer Debugf("Done proxying to %s:%s", proto, address)
+	utils.Debugf("proxying to %s:%s", proto, address)
+	defer utils.Debugf("Done proxying to %s:%s", proto, address)
 	for {
-		Debugf("Listening on %s", listener)
+		utils.Debugf("Listening on %s", listener)
 		src, err := listener.Accept()
 		if err != nil {
 			return err
 		}
-		Debugf("Connecting to %s:%s", proto, address)
+		utils.Debugf("Connecting to %s:%s", proto, address)
 		dst, err := net.Dial(proto, address)
 		if err != nil {
 			log.Printf("Error connecting to %s:%s: %s", proto, address, err)
 			src.Close()
 			continue
 		}
-		Debugf("Connected to backend, splicing")
+		utils.Debugf("Connected to backend, splicing")
 		splice(src, dst)
 	}
-	return nil
+	panic("Unreachable")
 }
 
 func halfSplice(dst, src net.Conn) error {
@@ -317,7 +317,7 @@ func (alloc *PortAllocator) runFountain() {
 
 // FIXME: Release can no longer fail, change its prototype to reflect that.
 func (alloc *PortAllocator) Release(port int) error {
-	Debugf("Releasing %d", port)
+	utils.Debugf("Releasing %d", port)
 	alloc.lock.Lock()
 	delete(alloc.inUse, port)
 	alloc.lock.Unlock()
@@ -325,7 +325,7 @@ func (alloc *PortAllocator) Release(port int) error {
 }
 
 func (alloc *PortAllocator) Acquire(port int) (int, error) {
-	Debugf("Acquiring %d", port)
+	utils.Debugf("Acquiring %d", port)
 	if port == 0 {
 		// Allocate a port from the fountain
 		for port := range alloc.fountain {
@@ -397,7 +397,7 @@ func (alloc *IPAllocator) run() {
 			}
 		}
 
-		ip := allocatedIP{ip: intToIp(newNum)}
+		ip := allocatedIP{ip: intToIP(newNum)}
 		if inUse {
 			ip.err = errors.New("No unallocated IP available")
 		}
@@ -464,11 +464,11 @@ func (iface *NetworkInterface) AllocatePort(spec string) (*Nat, error) {
 		return nil, err
 	}
 	// Allocate a random port if Frontend==0
-	if extPort, err := iface.manager.portAllocator.Acquire(nat.Frontend); err != nil {
+	extPort, err := iface.manager.portAllocator.Acquire(nat.Frontend)
+	if err != nil {
 		return nil, err
-	} else {
-		nat.Frontend = extPort
 	}
+	nat.Frontend = extPort
 	if err := iface.manager.portMapper.Map(nat.Frontend, net.TCPAddr{IP: iface.IPNet.IP, Port: nat.Backend}); err != nil {
 		iface.manager.portAllocator.Release(nat.Frontend)
 		return nil, err

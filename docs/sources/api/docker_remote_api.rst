@@ -1,3 +1,7 @@
+:title: Remote API
+:description: API Documentation for Docker
+:keywords: API, Docker, rcli, REST, documentation
+
 =================
 Docker Remote API
 =================
@@ -9,18 +13,25 @@ Docker Remote API
 
 - The Remote API is replacing rcli
 - Default port in the docker deamon is 4243 
-- The API tends to be REST, but for some complex commands, like attach or pull, the HTTP connection in hijacked to transport stdout stdin and stderr
+- The API tends to be REST, but for some complex commands, like attach or pull, the HTTP connection is hijacked to transport stdout stdin and stderr
 
-2. Endpoints
+2. Version
+==========
+
+The current verson of the API is 1.1
+Calling /images/<name>/insert is the same as calling /v1.1/images/<name>/insert
+You can still call an old version of the api using /v1.0/images/<name>/insert
+
+3. Endpoints
 ============
 
-2.1 Containers
+3.1 Containers
 --------------
 
 List containers
 ***************
 
-.. http:get:: /containers/ps
+.. http:get:: /containers/json
 
 	List containers
 
@@ -28,7 +39,7 @@ List containers
 
 	.. sourcecode:: http
 
-	   GET /containers/ps?trunc_cmd=0&all=1&before=8dfafdbc3a40 HTTP/1.1
+	   GET /containers/json?all=1&before=8dfafdbc3a40 HTTP/1.1
 	   
 	**Example response**:
 
@@ -68,11 +79,12 @@ List containers
 		}
 	   ]
  
-	:query all: 1 or 0, Show all containers. Only running containers are shown by default
+	:query all: 1/True/true or 0/False/false, Show all containers. Only running containers are shown by default
 	:query limit: Show ``limit`` last created containers, include non-running ones.
 	:query since: Show only containers created since Id, include non-running ones.
 	:query before: Show only containers created before Id, include non-running ones.
 	:statuscode 200: no error
+	:statuscode 400: bad parameter
 	:statuscode 500: server error
 
 
@@ -117,7 +129,8 @@ Create a container
 	.. sourcecode:: http
 
 	   HTTP/1.1 201 OK
-	   
+	   Content-Type: application/json
+
 	   {
 		"Id":"e90e34656806"
 		"Warnings":[]
@@ -126,6 +139,7 @@ Create a container
 	:jsonparam config: the container's configuration
 	:statuscode 201: no error
 	:statuscode 404: no such container
+	:statuscode 406: impossible to attach (container not running)
 	:statuscode 500: server error
 
 
@@ -372,7 +386,7 @@ Attach to a container
 
 .. http:post:: /containers/(id)/attach
 
-	Stop the container ``id``
+	Attach to the container ``id``
 
 	**Example request**:
 
@@ -389,12 +403,13 @@ Attach to a container
 
 	   {{ STREAM }}
 	   	
-	:query logs: 1 or 0, return logs. Default 0
-	:query stream: 1 or 0, return stream. Default 0
-	:query stdin: 1 or 0, if stream=1, attach to stdin. Default 0
-	:query stdout: 1 or 0, if logs=1, return stdout log, if stream=1, attach to stdout. Default 0
-	:query stderr: 1 or 0, if logs=1, return stderr log, if stream=1, attach to stderr. Default 0
+	:query logs: 1/True/true or 0/False/false, return logs. Default false
+	:query stream: 1/True/true or 0/False/false, return stream. Default false
+	:query stdin: 1/True/true or 0/False/false, if stream=true, attach to stdin. Default false
+	:query stdout: 1/True/true or 0/False/false, if logs=true, return stdout log, if stream=true, attach to stdout. Default false
+	:query stderr: 1/True/true or 0/False/false, if logs=true, return stderr log, if stream=true, attach to stderr. Default false
 	:statuscode 200: no error
+	:statuscode 400: bad parameter
 	:statuscode 404: no such container
 	:statuscode 500: server error
 
@@ -445,13 +460,14 @@ Remove a container
 
 	   HTTP/1.1 204 OK
 
-	:query v: 1 or 0, Remove the volumes associated to the container. Default 0
+	:query v: 1/True/true or 0/False/false, Remove the volumes associated to the container. Default false
         :statuscode 204: no error
+	:statuscode 400: bad parameter
         :statuscode 404: no such container
         :statuscode 500: server error
 
 
-2.2 Images
+3.2 Images
 ----------
 
 List Images
@@ -521,8 +537,9 @@ List Images
 	   base [style=invisible]
 	   }
  
-	:query all: 1 or 0, Show all containers. Only running containers are shown by default
+	:query all: 1/True/true or 0/False/false, Show all containers. Only running containers are shown by default
 	:statuscode 200: no error
+	:statuscode 400: bad parameter
 	:statuscode 500: server error
 
 
@@ -539,7 +556,19 @@ Create an image
 
            POST /images/create?fromImage=base HTTP/1.1
 
-        **Example response**:
+        **Example response v1.1**:
+
+        .. sourcecode:: http
+
+           HTTP/1.1 200 OK
+	   Content-Type: application/json
+
+	   {"status":"Pulling..."}
+	   {"status":"Pulling", "progress":"1/? (n/a)"}
+	   {"error":"Invalid..."}
+	   ...
+
+        **Example response v1.0**:
 
         .. sourcecode:: http
 
@@ -570,7 +599,19 @@ Insert a file in a image
 
            POST /images/test/insert?path=/usr&url=myurl HTTP/1.1
 
-	**Example response**:
+	**Example response v1.1**:
+
+        .. sourcecode:: http
+
+           HTTP/1.1 200 OK
+	   Content-Type: application/json
+
+	   {"status":"Inserting..."}
+	   {"status":"Inserting", "progress":"1/? (n/a)"}
+	   {"error":"Invalid..."}
+	   ...
+
+	**Example response v1.0**:
 
         .. sourcecode:: http
 
@@ -685,7 +726,19 @@ Push an image on the registry
 
 	    POST /images/test/push HTTP/1.1
 
-	 **Example response**:
+	 **Example response v1.1**:
+
+        .. sourcecode:: http
+
+           HTTP/1.1 200 OK
+	   Content-Type: application/json
+
+	   {"status":"Pushing..."}
+	   {"status":"Pushing", "progress":"1/? (n/a)"}
+	   {"error":"Invalid..."}
+	   ...
+
+	 **Example response v1.0**:
 
         .. sourcecode:: http
 
@@ -720,8 +773,9 @@ Tag an image into a repository
            HTTP/1.1 200 OK
 
 	:query repo: The repository to tag in
-	:query force: 1 or 0, default 0
+	:query force: 1/True/true or 0/False/false, default false
 	:statuscode 200: no error
+	:statuscode 400: bad parameter
 	:statuscode 404: no such image
         :statuscode 500: server error
 
@@ -790,7 +844,7 @@ Search images
 	   :statuscode 500: server error
 
 
-2.3 Misc
+3.3 Misc
 --------
 
 Build an image from Dockerfile via stdin
@@ -816,6 +870,7 @@ Build an image from Dockerfile via stdin
 	   
 	   {{ STREAM }}
 
+	:query t: tag to be applied to the resulting image in case of success
 	:statuscode 200: no error
         :statuscode 500: server error
 
@@ -902,10 +957,12 @@ Display system-wide information
 
 	   {
 		"Containers":11,
-		"Version":"0.2.2",
 		"Images":16,
-		"GoVersion":"go1.0.3",
-		"Debug":false
+		"Debug":false,
+		"NFd": 11,
+		"NGoroutines":21,
+		"MemoryLimit":true,
+		"SwapLimit":false
 	   }
 
         :statuscode 200: no error
@@ -931,12 +988,11 @@ Show the docker version information
 
            HTTP/1.1 200 OK
 	   Content-Type: application/json
-	   
+
 	   {
 		"Version":"0.2.2",
 		"GitCommit":"5a2a5cc+CHANGES",
-		"MemoryLimit":true,
-		"SwapLimit":false
+		"GoVersion":"go1.0.3"
 	   }
 
         :statuscode 200: no error

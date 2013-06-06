@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -15,13 +16,19 @@ import (
 const CONFIGFILE = ".dockercfg"
 
 // the registry server we want to login against
-const INDEX_SERVER = "https://index.docker.io"
+const INDEXSERVER = "https://index.docker.io/v1"
+
+//const INDEXSERVER = "http://indexstaging-docker.dotcloud.com/"
+
+var (
+	ErrConfigFileMissing = errors.New("The Auth config file is missing")
+)
 
 type AuthConfig struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
-	rootPath string `json:-`
+	rootPath string
 }
 
 func NewAuthConfig(username, password, email, rootPath string) *AuthConfig {
@@ -31,6 +38,13 @@ func NewAuthConfig(username, password, email, rootPath string) *AuthConfig {
 		Email:    email,
 		rootPath: rootPath,
 	}
+}
+
+func IndexServerAddress() string {
+	if os.Getenv("DOCKER_INDEX_URL") != "" {
+		return os.Getenv("DOCKER_INDEX_URL") + "/v1"
+	}
+	return INDEXSERVER
 }
 
 // create a base64 encoded auth string to store in config
@@ -68,7 +82,7 @@ func DecodeAuth(authStr string) (*AuthConfig, error) {
 func LoadConfig(rootPath string) (*AuthConfig, error) {
 	confFile := path.Join(rootPath, CONFIGFILE)
 	if _, err := os.Stat(confFile); err != nil {
-		return &AuthConfig{}, fmt.Errorf("The Auth config file is missing")
+		return nil, ErrConfigFileMissing
 	}
 	b, err := ioutil.ReadFile(confFile)
 	if err != nil {
@@ -90,7 +104,7 @@ func LoadConfig(rootPath string) (*AuthConfig, error) {
 }
 
 // save the auth config
-func saveConfig(rootPath, authStr string, email string) error {
+func SaveConfig(rootPath, authStr string, email string) error {
 	confFile := path.Join(rootPath, CONFIGFILE)
 	if len(email) == 0 {
 		os.Remove(confFile)
@@ -119,7 +133,7 @@ func Login(authConfig *AuthConfig) (string, error) {
 
 	// using `bytes.NewReader(jsonBody)` here causes the server to respond with a 411 status.
 	b := strings.NewReader(string(jsonBody))
-	req1, err := http.Post(INDEX_SERVER+"/v1/users/", "application/json; charset=utf-8", b)
+	req1, err := http.Post(IndexServerAddress()+"/users/", "application/json; charset=utf-8", b)
 	if err != nil {
 		return "", fmt.Errorf("Server Error: %s", err)
 	}
@@ -139,7 +153,7 @@ func Login(authConfig *AuthConfig) (string, error) {
 			"Please check your e-mail for a confirmation link.")
 	} else if reqStatusCode == 400 {
 		if string(reqBody) == "\"Username or email already exists\"" {
-			req, err := http.NewRequest("GET", INDEX_SERVER+"/v1/users/", nil)
+			req, err := http.NewRequest("GET", IndexServerAddress()+"/users/", nil)
 			req.SetBasicAuth(authConfig.Username, authConfig.Password)
 			resp, err := client.Do(req)
 			if err != nil {
@@ -154,7 +168,9 @@ func Login(authConfig *AuthConfig) (string, error) {
 				status = "Login Succeeded\n"
 				storeConfig = true
 			} else if resp.StatusCode == 401 {
-				saveConfig(authConfig.rootPath, "", "")
+				if err := SaveConfig(authConfig.rootPath, "", ""); err != nil {
+					return "", err
+				}
 				return "", fmt.Errorf("Wrong login/password, please try again")
 			} else {
 				return "", fmt.Errorf("Login: %s (Code: %d; Headers: %s)", body,
@@ -168,7 +184,9 @@ func Login(authConfig *AuthConfig) (string, error) {
 	}
 	if storeConfig {
 		authStr := EncodeAuth(authConfig)
-		saveConfig(authConfig.rootPath, authStr, authConfig.Email)
+		if err := SaveConfig(authConfig.rootPath, authStr, authConfig.Email); err != nil {
+			return "", err
+		}
 	}
 	return status, nil
 }

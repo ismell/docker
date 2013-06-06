@@ -3,7 +3,7 @@ package docker
 import (
 	"container/list"
 	"fmt"
-	"github.com/dotcloud/docker/auth"
+	"github.com/dotcloud/docker/utils"
 	"io"
 	"io/ioutil"
 	"log"
@@ -26,19 +26,19 @@ type Runtime struct {
 	networkManager *NetworkManager
 	graph          *Graph
 	repositories   *TagStore
-	authConfig     *auth.AuthConfig
-	idIndex        *TruncIndex
+	idIndex        *utils.TruncIndex
 	capabilities   *Capabilities
-	kernelVersion  *KernelVersionInfo
+	kernelVersion  *utils.KernelVersionInfo
 	autoRestart    bool
 	volumes        *Graph
+	srv            *Server
 	binds          map[string]string
 }
 
 var sysInitPath string
 
 func init() {
-	sysInitPath = SelfPath()
+	sysInitPath = utils.SelfPath()
 }
 
 func (runtime *Runtime) List() []*Container {
@@ -52,7 +52,7 @@ func (runtime *Runtime) List() []*Container {
 func (runtime *Runtime) getContainerElement(id string) *list.Element {
 	for e := runtime.containers.Front(); e != nil; e = e.Next() {
 		container := e.Value.(*Container)
-		if container.Id == id {
+		if container.ID == id {
 			return e
 		}
 	}
@@ -84,8 +84,8 @@ func (runtime *Runtime) Load(id string) (*Container, error) {
 	if err := container.FromDisk(); err != nil {
 		return nil, err
 	}
-	if container.Id != id {
-		return container, fmt.Errorf("Container %s is stored at %s", container.Id, id)
+	if container.ID != id {
+		return container, fmt.Errorf("Container %s is stored at %s", container.ID, id)
 	}
 	if container.State.Running {
 		container.State.Ghost = true
@@ -96,12 +96,12 @@ func (runtime *Runtime) Load(id string) (*Container, error) {
 	return container, nil
 }
 
-// Register makes a container object usable by the runtime as <container.Id>
+// Register makes a container object usable by the runtime as <container.ID>
 func (runtime *Runtime) Register(container *Container) error {
-	if container.runtime != nil || runtime.Exists(container.Id) {
+	if container.runtime != nil || runtime.Exists(container.ID) {
 		return fmt.Errorf("Container is already loaded")
 	}
-	if err := validateId(container.Id); err != nil {
+	if err := validateID(container.ID); err != nil {
 		return err
 	}
 
@@ -114,17 +114,17 @@ func (runtime *Runtime) Register(container *Container) error {
 	container.runtime = runtime
 
 	// Attach to stdout and stderr
-	container.stderr = newWriteBroadcaster()
-	container.stdout = newWriteBroadcaster()
+	container.stderr = utils.NewWriteBroadcaster()
+	container.stdout = utils.NewWriteBroadcaster()
 	// Attach to stdin
 	if container.Config.OpenStdin {
 		container.stdin, container.stdinPipe = io.Pipe()
 	} else {
-		container.stdinPipe = NopWriteCloser(ioutil.Discard) // Silently drop stdin
+		container.stdinPipe = utils.NopWriteCloser(ioutil.Discard) // Silently drop stdin
 	}
 	// done
 	runtime.containers.PushBack(container)
-	runtime.idIndex.Add(container.Id)
+	runtime.idIndex.Add(container.ID)
 
 	// When we actually restart, Start() do the monitoring.
 	// However, when we simply 'reattach', we have to restart a monitor
@@ -134,25 +134,25 @@ func (runtime *Runtime) Register(container *Container) error {
 	//        if so, then we need to restart monitor and init a new lock
 	// If the container is supposed to be running, make sure of it
 	if container.State.Running {
-		if output, err := exec.Command("lxc-info", "-n", container.Id).CombinedOutput(); err != nil {
+		output, err := exec.Command("lxc-info", "-n", container.ID).CombinedOutput()
+		if err != nil {
 			return err
-		} else {
-			if !strings.Contains(string(output), "RUNNING") {
-				Debugf("Container %s was supposed to be running be is not.", container.Id)
-				if runtime.autoRestart {
-					Debugf("Restarting")
-					container.State.Ghost = false
-					container.State.setStopped(0)
-					if err := container.Start(); err != nil {
-						return err
-					}
-					nomonitor = true
-				} else {
-					Debugf("Marking as stopped")
-					container.State.setStopped(-127)
-					if err := container.ToDisk(); err != nil {
-						return err
-					}
+		}
+		if !strings.Contains(string(output), "RUNNING") {
+			utils.Debugf("Container %s was supposed to be running be is not.", container.ID)
+			if runtime.autoRestart {
+				utils.Debugf("Restarting")
+				container.State.Ghost = false
+				container.State.setStopped(0)
+				if err := container.Start(); err != nil {
+					return err
+				}
+				nomonitor = true
+			} else {
+				utils.Debugf("Marking as stopped")
+				container.State.setStopped(-127)
+				if err := container.ToDisk(); err != nil {
+					return err
 				}
 			}
 		}
@@ -169,7 +169,7 @@ func (runtime *Runtime) Register(container *Container) error {
 	return nil
 }
 
-func (runtime *Runtime) LogToDisk(src *writeBroadcaster, dst string) error {
+func (runtime *Runtime) LogToDisk(src *utils.WriteBroadcaster, dst string) error {
 	log, err := os.OpenFile(dst, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -183,9 +183,9 @@ func (runtime *Runtime) Destroy(container *Container) error {
 		return fmt.Errorf("The given container is <nil>")
 	}
 
-	element := runtime.getContainerElement(container.Id)
+	element := runtime.getContainerElement(container.ID)
 	if element == nil {
-		return fmt.Errorf("Container %v not found - maybe it was already destroyed?", container.Id)
+		return fmt.Errorf("Container %v not found - maybe it was already destroyed?", container.ID)
 	}
 
 	if err := container.Stop(3); err != nil {
@@ -195,14 +195,14 @@ func (runtime *Runtime) Destroy(container *Container) error {
 		return err
 	} else if mounted {
 		if err := container.Unmount(); err != nil {
-			return fmt.Errorf("Unable to unmount container %v: %v", container.Id, err)
+			return fmt.Errorf("Unable to unmount container %v: %v", container.ID, err)
 		}
 	}
 	// Deregister the container before removing its directory, to avoid race conditions
-	runtime.idIndex.Delete(container.Id)
+	runtime.idIndex.Delete(container.ID)
 	runtime.containers.Remove(element)
 	if err := os.RemoveAll(container.root); err != nil {
-		return fmt.Errorf("Unable to remove filesystem for %v: %v", container.Id, err)
+		return fmt.Errorf("Unable to remove filesystem for %v: %v", container.ID, err)
 	}
 	return nil
 }
@@ -216,16 +216,16 @@ func (runtime *Runtime) restore() error {
 		id := v.Name()
 		container, err := runtime.Load(id)
 		if err != nil {
-			Debugf("Failed to load container %v: %v", id, err)
+			utils.Debugf("Failed to load container %v: %v", id, err)
 			continue
 		}
-		Debugf("Loaded container %v", container.Id)
+		utils.Debugf("Loaded container %v", container.ID)
 	}
 	return nil
 }
 
 func (runtime *Runtime) UpdateCapabilities(quiet bool) {
-	if cgroupMemoryMountpoint, err := FindCgroupMountpoint("memory"); err != nil {
+	if cgroupMemoryMountpoint, err := utils.FindCgroupMountpoint("memory"); err != nil {
 		if !quiet {
 			log.Printf("WARNING: %s\n", err)
 		}
@@ -252,11 +252,11 @@ func NewRuntime(autoRestart bool) (*Runtime, error) {
 		return nil, err
 	}
 
-	if k, err := GetKernelVersion(); err != nil {
+	if k, err := utils.GetKernelVersion(); err != nil {
 		log.Printf("WARNING: %s\n", err)
 	} else {
 		runtime.kernelVersion = k
-		if CompareKernelVersion(k, &KernelVersionInfo{Kernel: 3, Major: 8, Minor: 0}) < 0 {
+		if utils.CompareKernelVersion(k, &utils.KernelVersionInfo{Kernel: 3, Major: 8, Minor: 0}) < 0 {
 			log.Printf("WARNING: You are running linux kernel version %s, which might be unstable running docker. Please upgrade your kernel to 3.8.0.", k.String())
 		}
 	}
@@ -290,11 +290,6 @@ func NewRuntimeFromDirectory(root string, autoRestart bool) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	authConfig, err := auth.LoadConfig(root)
-	if err != nil && authConfig == nil {
-		// If the auth file does not exist, keep going
-		return nil, err
-	}
 	runtime := &Runtime{
 		root:           root,
 		repository:     runtimeRepo,
@@ -302,8 +297,7 @@ func NewRuntimeFromDirectory(root string, autoRestart bool) (*Runtime, error) {
 		networkManager: netManager,
 		graph:          g,
 		repositories:   repositories,
-		authConfig:     authConfig,
-		idIndex:        NewTruncIndex(),
+		idIndex:        utils.NewTruncIndex(),
 		capabilities:   &Capabilities{},
 		autoRestart:    autoRestart,
 		volumes:        volumes,

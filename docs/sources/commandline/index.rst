@@ -1,6 +1,6 @@
-:title: docker documentation
+:title: Commands
 :description: -- todo: change me
-:keywords: todo: change me
+:keywords: todo, commands, command line, help, docker, documentation
 
 
 Commands
@@ -9,7 +9,7 @@ Commands
 Contents:
 
 .. toctree::
-  :maxdepth: 3
+  :maxdepth: 1
 
   cli
   attach  <command/attach>

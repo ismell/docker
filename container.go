@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/dotcloud/docker/term"
+	"github.com/dotcloud/docker/utils"
 	"github.com/kr/pty"
 	"io"
 	"io/ioutil"
@@ -21,7 +23,7 @@ import (
 type Container struct {
 	root string
 
-	Id string
+	ID string
 
 	Created time.Time
 
@@ -39,8 +41,8 @@ type Container struct {
 	ResolvConfPath string
 
 	cmd       *exec.Cmd
-	stdout    *writeBroadcaster
-	stderr    *writeBroadcaster
+	stdout    *utils.WriteBroadcaster
+	stderr    *utils.WriteBroadcaster
 	stdin     io.ReadCloser
 	stdinPipe io.WriteCloser
 	ptyMaster io.Closer
@@ -178,8 +180,8 @@ func ParseRun(args []string, capabilities *Capabilities) (*Config, *flag.FlagSet
 }
 
 type NetworkSettings struct {
-	IpAddress   string
-	IpPrefixLen int
+	IPAddress   string
+	IPPrefixLen int
 	Gateway     string
 	Bridge      string
 	PortMapping map[string]string
@@ -264,9 +266,9 @@ func (container *Container) startPty() error {
 	// Copy the PTYs to our broadcasters
 	go func() {
 		defer container.stdout.CloseWriters()
-		Debugf("[startPty] Begin of stdout pipe")
+		utils.Debugf("[startPty] Begin of stdout pipe")
 		io.Copy(container.stdout, ptyMaster)
-		Debugf("[startPty] End of stdout pipe")
+		utils.Debugf("[startPty] End of stdout pipe")
 	}()
 
 	// stdin
@@ -275,9 +277,9 @@ func (container *Container) startPty() error {
 		container.cmd.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
 		go func() {
 			defer container.stdin.Close()
-			Debugf("[startPty] Begin of stdin pipe")
+			utils.Debugf("[startPty] Begin of stdin pipe")
 			io.Copy(ptyMaster, container.stdin)
-			Debugf("[startPty] End of stdin pipe")
+			utils.Debugf("[startPty] End of stdin pipe")
 		}()
 	}
 	if err := container.cmd.Start(); err != nil {
@@ -297,9 +299,9 @@ func (container *Container) start() error {
 		}
 		go func() {
 			defer stdin.Close()
-			Debugf("Begin of stdin pipe [start]")
+			utils.Debugf("Begin of stdin pipe [start]")
 			io.Copy(stdin, container.stdin)
-			Debugf("End of stdin pipe [start]")
+			utils.Debugf("End of stdin pipe [start]")
 		}()
 	}
 	return container.cmd.Start()
@@ -316,8 +318,8 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 			errors <- err
 		} else {
 			go func() {
-				Debugf("[start] attach stdin\n")
-				defer Debugf("[end] attach stdin\n")
+				utils.Debugf("[start] attach stdin\n")
+				defer utils.Debugf("[end] attach stdin\n")
 				// No matter what, when stdin is closed (io.Copy unblock), close stdout and stderr
 				if cStdout != nil {
 					defer cStdout.Close()
@@ -329,12 +331,12 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 					defer cStdin.Close()
 				}
 				if container.Config.Tty {
-					_, err = CopyEscapable(cStdin, stdin)
+					_, err = utils.CopyEscapable(cStdin, stdin)
 				} else {
 					_, err = io.Copy(cStdin, stdin)
 				}
 				if err != nil {
-					Debugf("[error] attach stdin: %s\n", err)
+					utils.Debugf("[error] attach stdin: %s\n", err)
 				}
 				// Discard error, expecting pipe error
 				errors <- nil
@@ -348,8 +350,8 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 		} else {
 			cStdout = p
 			go func() {
-				Debugf("[start] attach stdout\n")
-				defer Debugf("[end]  attach stdout\n")
+				utils.Debugf("[start] attach stdout\n")
+				defer utils.Debugf("[end]  attach stdout\n")
 				// If we are in StdinOnce mode, then close stdin
 				if container.Config.StdinOnce {
 					if stdin != nil {
@@ -361,7 +363,7 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 				}
 				_, err := io.Copy(stdout, cStdout)
 				if err != nil {
-					Debugf("[error] attach stdout: %s\n", err)
+					utils.Debugf("[error] attach stdout: %s\n", err)
 				}
 				errors <- err
 			}()
@@ -374,8 +376,8 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 		} else {
 			cStderr = p
 			go func() {
-				Debugf("[start] attach stderr\n")
-				defer Debugf("[end]  attach stderr\n")
+				utils.Debugf("[start] attach stderr\n")
+				defer utils.Debugf("[end]  attach stderr\n")
 				// If we are in StdinOnce mode, then close stdin
 				if container.Config.StdinOnce {
 					if stdin != nil {
@@ -387,13 +389,13 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 				}
 				_, err := io.Copy(stderr, cStderr)
 				if err != nil {
-					Debugf("[error] attach stderr: %s\n", err)
+					utils.Debugf("[error] attach stderr: %s\n", err)
 				}
 				errors <- err
 			}()
 		}
 	}
-	return Go(func() error {
+	return utils.Go(func() error {
 		if cStdout != nil {
 			defer cStdout.Close()
 		}
@@ -403,14 +405,14 @@ func (container *Container) Attach(stdin io.ReadCloser, stdinCloser io.Closer, s
 		// FIXME: how do clean up the stdin goroutine without the unwanted side effect
 		// of closing the passed stdin? Add an intermediary io.Pipe?
 		for i := 0; i < nJobs; i += 1 {
-			Debugf("Waiting for job %d/%d\n", i+1, nJobs)
+			utils.Debugf("Waiting for job %d/%d\n", i+1, nJobs)
 			if err := <-errors; err != nil {
-				Debugf("Job %d returned error %s. Aborting all jobs\n", i+1, err)
+				utils.Debugf("Job %d returned error %s. Aborting all jobs\n", i+1, err)
 				return err
 			}
-			Debugf("Job %d completed successfully\n", i+1)
+			utils.Debugf("Job %d completed successfully\n", i+1)
 		}
-		Debugf("All jobs completed successfully\n")
+		utils.Debugf("All jobs completed successfully\n")
 		return nil
 	})
 }
@@ -420,7 +422,7 @@ func (container *Container) Start() error {
 	defer container.State.unlock()
 
 	if container.State.Running {
-		return fmt.Errorf("The container %s is already running.", container.Id)
+		return fmt.Errorf("The container %s is already running.", container.ID)
 	}
 	if err := container.EnsureMounted(); err != nil {
 		return err
@@ -442,24 +444,24 @@ func (container *Container) Start() error {
 
 	// Create the requested volumes volumes
 	for volPath := range container.Config.Volumes {
-		if c, err := container.runtime.volumes.Create(nil, container, "", "", nil); err != nil {
+		c, err := container.runtime.volumes.Create(nil, container, "", "", nil)
+		if err != nil {
 			return err
-		} else {
-			if err := os.MkdirAll(path.Join(container.RootfsPath(), volPath), 0755); err != nil {
-				return nil
-			}
-			container.Volumes[volPath] = c.Id
 		}
+		if err := os.MkdirAll(path.Join(container.RootfsPath(), volPath), 0755); err != nil {
+			return nil
+		}
+		container.Volumes[volPath] = c.ID
 	}
 
 	if container.Config.VolumesFrom != "" {
 		c := container.runtime.Get(container.Config.VolumesFrom)
 		if c == nil {
-			return fmt.Errorf("Container %s not found. Impossible to mount its volumes", container.Id)
+			return fmt.Errorf("Container %s not found. Impossible to mount its volumes", container.ID)
 		}
 		for volPath, id := range c.Volumes {
 			if _, exists := container.Volumes[volPath]; exists {
-				return fmt.Errorf("The requested volume %s overlap one of the volume of the container %s", volPath, c.Id)
+				return fmt.Errorf("The requested volume %s overlap one of the volume of the container %s", volPath, c.ID)
 			}
 			if err := os.MkdirAll(path.Join(container.RootfsPath(), volPath), 0755); err != nil {
 				return nil
@@ -499,7 +501,7 @@ func (container *Container) Start() error {
 	}
 
 	params := []string{
-		"-n", container.Id,
+		"-n", container.ID,
 		"-f", container.lxcConfigPath(),
 		"--",
 		"/sbin/init",
@@ -594,13 +596,13 @@ func (container *Container) StdinPipe() (io.WriteCloser, error) {
 func (container *Container) StdoutPipe() (io.ReadCloser, error) {
 	reader, writer := io.Pipe()
 	container.stdout.AddWriter(writer)
-	return newBufReader(reader), nil
+	return utils.NewBufReader(reader), nil
 }
 
 func (container *Container) StderrPipe() (io.ReadCloser, error) {
 	reader, writer := io.Pipe()
 	container.stderr.AddWriter(writer)
-	return newBufReader(reader), nil
+	return utils.NewBufReader(reader), nil
 }
 
 func (container *Container) allocateNetwork() error {
@@ -610,17 +612,17 @@ func (container *Container) allocateNetwork() error {
 	}
 	container.NetworkSettings.PortMapping = make(map[string]string)
 	for _, spec := range container.Config.PortSpecs {
-		if nat, err := iface.AllocatePort(spec); err != nil {
+		nat, err := iface.AllocatePort(spec)
+		if err != nil {
 			iface.Release()
 			return err
-		} else {
-			container.NetworkSettings.PortMapping[strconv.Itoa(nat.Backend)] = strconv.Itoa(nat.Frontend)
 		}
+		container.NetworkSettings.PortMapping[strconv.Itoa(nat.Backend)] = strconv.Itoa(nat.Frontend)
 	}
 	container.network = iface
 	container.NetworkSettings.Bridge = container.runtime.networkManager.bridgeIface
-	container.NetworkSettings.IpAddress = iface.IPNet.IP.String()
-	container.NetworkSettings.IpPrefixLen, _ = iface.IPNet.Mask.Size()
+	container.NetworkSettings.IPAddress = iface.IPNet.IP.String()
+	container.NetworkSettings.IPPrefixLen, _ = iface.IPNet.Mask.Size()
 	container.NetworkSettings.Gateway = iface.Gateway.String()
 	return nil
 }
@@ -634,36 +636,36 @@ func (container *Container) releaseNetwork() {
 // FIXME: replace this with a control socket within docker-init
 func (container *Container) waitLxc() error {
 	for {
-		if output, err := exec.Command("lxc-info", "-n", container.Id).CombinedOutput(); err != nil {
+		output, err := exec.Command("lxc-info", "-n", container.ID).CombinedOutput()
+		if err != nil {
 			return err
-		} else {
-			if !strings.Contains(string(output), "RUNNING") {
-				return nil
-			}
+		}
+		if !strings.Contains(string(output), "RUNNING") {
+			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return nil
+	panic("Unreachable")
 }
 
 func (container *Container) monitor() {
 	// Wait for the program to exit
-	Debugf("Waiting for process")
+	utils.Debugf("Waiting for process")
 
 	// If the command does not exists, try to wait via lxc
 	if container.cmd == nil {
 		if err := container.waitLxc(); err != nil {
-			Debugf("%s: Process: %s", container.Id, err)
+			utils.Debugf("%s: Process: %s", container.ID, err)
 		}
 	} else {
 		if err := container.cmd.Wait(); err != nil {
 			// Discard the error as any signals or non 0 returns will generate an error
-			Debugf("%s: Process: %s", container.Id, err)
+			utils.Debugf("%s: Process: %s", container.ID, err)
 		}
 	}
-	Debugf("Process finished")
+	utils.Debugf("Process finished")
 
-	var exitCode int = -1
+	exitCode := -1
 	if container.cmd != nil {
 		exitCode = container.cmd.ProcessState.Sys().(syscall.WaitStatus).ExitStatus()
 	}
@@ -672,24 +674,24 @@ func (container *Container) monitor() {
 	container.releaseNetwork()
 	if container.Config.OpenStdin {
 		if err := container.stdin.Close(); err != nil {
-			Debugf("%s: Error close stdin: %s", container.Id, err)
+			utils.Debugf("%s: Error close stdin: %s", container.ID, err)
 		}
 	}
 	if err := container.stdout.CloseWriters(); err != nil {
-		Debugf("%s: Error close stdout: %s", container.Id, err)
+		utils.Debugf("%s: Error close stdout: %s", container.ID, err)
 	}
 	if err := container.stderr.CloseWriters(); err != nil {
-		Debugf("%s: Error close stderr: %s", container.Id, err)
+		utils.Debugf("%s: Error close stderr: %s", container.ID, err)
 	}
 
 	if container.ptyMaster != nil {
 		if err := container.ptyMaster.Close(); err != nil {
-			Debugf("%s: Error closing Pty master: %s", container.Id, err)
+			utils.Debugf("%s: Error closing Pty master: %s", container.ID, err)
 		}
 	}
 
 	if err := container.Unmount(); err != nil {
-		log.Printf("%v: Failed to umount filesystem: %v", container.Id, err)
+		log.Printf("%v: Failed to umount filesystem: %v", container.ID, err)
 	}
 
 	// Re-create a brand new stdin pipe once the container exited
@@ -710,7 +712,7 @@ func (container *Container) monitor() {
 		// This is because State.setStopped() has already been called, and has caused Wait()
 		// to return.
 		// FIXME: why are we serializing running state to disk in the first place?
-		//log.Printf("%s: Failed to dump configuration to the disk: %s", container.Id, err)
+		//log.Printf("%s: Failed to dump configuration to the disk: %s", container.ID, err)
 	}
 }
 
@@ -720,17 +722,17 @@ func (container *Container) kill() error {
 	}
 
 	// Sending SIGKILL to the process via lxc
-	output, err := exec.Command("lxc-kill", "-n", container.Id, "9").CombinedOutput()
+	output, err := exec.Command("lxc-kill", "-n", container.ID, "9").CombinedOutput()
 	if err != nil {
-		log.Printf("error killing container %s (%s, %s)", container.Id, output, err)
+		log.Printf("error killing container %s (%s, %s)", container.ID, output, err)
 	}
 
 	// 2. Wait for the process to die, in last resort, try to kill the process directly
 	if err := container.WaitTimeout(10 * time.Second); err != nil {
 		if container.cmd == nil {
-			return fmt.Errorf("lxc-kill failed, impossible to kill the container %s", container.Id)
+			return fmt.Errorf("lxc-kill failed, impossible to kill the container %s", container.ID)
 		}
-		log.Printf("Container %s failed to exit within 10 seconds of lxc SIGKILL - trying direct SIGKILL", container.Id)
+		log.Printf("Container %s failed to exit within 10 seconds of lxc SIGKILL - trying direct SIGKILL", container.ID)
 		if err := container.cmd.Process.Kill(); err != nil {
 			return err
 		}
@@ -758,7 +760,7 @@ func (container *Container) Stop(seconds int) error {
 	}
 
 	// 1. Send a SIGTERM
-	if output, err := exec.Command("lxc-kill", "-n", container.Id, "15").CombinedOutput(); err != nil {
+	if output, err := exec.Command("lxc-kill", "-n", container.ID, "15").CombinedOutput(); err != nil {
 		log.Print(string(output))
 		log.Print("Failed to send SIGTERM to the process, force killing")
 		if err := container.kill(); err != nil {
@@ -768,7 +770,7 @@ func (container *Container) Stop(seconds int) error {
 
 	// 2. Wait for the process to exit on its own
 	if err := container.WaitTimeout(time.Duration(seconds) * time.Second); err != nil {
-		log.Printf("Container %v failed to exit within %d seconds of SIGTERM - using the force", container.Id, seconds)
+		log.Printf("Container %v failed to exit within %d seconds of SIGTERM - using the force", container.ID, seconds)
 		if err := container.kill(); err != nil {
 			return err
 		}
@@ -792,6 +794,14 @@ func (container *Container) Wait() int {
 	return container.State.ExitCode
 }
 
+func (container *Container) Resize(h, w int) error {
+	pty, ok := container.ptyMaster.(*os.File)
+	if !ok {
+		return fmt.Errorf("ptyMaster does not have Fd() method")
+	}
+	return term.SetWinsize(pty.Fd(), &term.Winsize{Height: uint16(h), Width: uint16(w)})
+}
+
 func (container *Container) ExportRw() (Archive, error) {
 	return Tar(container.rwPath(), Uncompressed)
 }
@@ -801,7 +811,7 @@ func (container *Container) RwChecksum() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return HashData(rwData)
+	return utils.HashData(rwData)
 }
 
 func (container *Container) Export() (Archive, error) {
@@ -824,7 +834,8 @@ func (container *Container) WaitTimeout(timeout time.Duration) error {
 	case <-done:
 		return nil
 	}
-	panic("unreachable")
+
+	panic("Unreachable")
 }
 
 func (container *Container) EnsureMounted() error {
@@ -867,16 +878,16 @@ func (container *Container) Unmount() error {
 	return Unmount(container.RootfsPath())
 }
 
-// ShortId returns a shorthand version of the container's id for convenience.
+// ShortID returns a shorthand version of the container's id for convenience.
 // A collision with other container shorthands is very unlikely, but possible.
 // In case of a collision a lookup with Runtime.Get() will fail, and the caller
 // will need to use a langer prefix, or the full-length container Id.
-func (container *Container) ShortId() string {
-	return TruncateId(container.Id)
+func (container *Container) ShortID() string {
+	return utils.TruncateID(container.ID)
 }
 
 func (container *Container) logPath(name string) string {
-	return path.Join(container.root, fmt.Sprintf("%s-%s.log", container.Id, name))
+	return path.Join(container.root, fmt.Sprintf("%s-%s.log", container.ID, name))
 }
 
 func (container *Container) ReadLog(name string) (io.Reader, error) {
@@ -916,7 +927,7 @@ func (container *Container) rwPath() string {
 	return path.Join(container.root, "rw")
 }
 
-func validateId(id string) error {
+func validateID(id string) error {
 	if id == "" {
 		return fmt.Errorf("Invalid empty id")
 	}
