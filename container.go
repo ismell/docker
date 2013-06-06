@@ -473,11 +473,7 @@ func (container *Container) Start() error {
 	for _, bind := range container.Config.Binds {
 		var src, dst, mode string
 		arr := strings.Split(bind, ":")
-		if len(arr) == 1 {
-			src = arr[0]
-			dst = arr[0]
-			mode = "rw"
-		} else if len(arr) == 2 {
+		if len(arr) == 2 {
 			src = arr[0]
 			dst = arr[1]
 			mode = "rw"
