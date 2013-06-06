@@ -1221,7 +1221,7 @@ func TestBindMounts(t *testing.T) {
 	// test reading from bind mount
 	bind_str := fmt.Sprintf("%s:/tmp:ro", tmpDir)
 	container, err := NewBuilder(runtime).Create(&Config{
-		Image: GetTestImage(runtime).Id,
+		Image: GetTestImage(runtime).ID,
 		Cmd:   []string{"ls", "/tmp"},
 		Binds: []string{bind_str},
 	},
@@ -1250,7 +1250,7 @@ func TestBindMounts(t *testing.T) {
 	// test writing to bind mount
 	bind_str2 := fmt.Sprintf("%s:/tmp:rw", tmpDir)
 	container2, err := NewBuilder(runtime).Create(&Config{
-		Image: GetTestImage(runtime).Id,
+		Image: GetTestImage(runtime).ID,
 		Cmd:   []string{"touch", "/tmp/holla"},
 		Binds: []string{bind_str2},
 	},
