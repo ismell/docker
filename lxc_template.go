@@ -84,9 +84,8 @@ lxc.mount.entry = {{.ResolvConfPath}} {{$ROOTFS}}/etc/resolv.conf none bind,ro 0
 lxc.mount.entry = {{$realPath}} {{$ROOTFS}}/{{$virtualPath}} none bind,rw 0 0
 {{end}}
 {{end}}
-{{if .Binds}}
-{{range $bindMap := .Binds}}
-lxc.mount.entry = {{$bindMap.SrcPath}} {{$ROOTFS}}{{$bindMap.DstPath}} none bind,{{$bindMap.Mode}} 0 0
+{{if .Binds}}# User-defined bind mounts
+{{range $bindMap := .Binds}}lxc.mount.entry = {{$bindMap.SrcPath}} {{$ROOTFS}}{{$bindMap.DstPath}} none bind,{{$bindMap.Mode}} 0 0
 {{end}}
 {{end}}
 
