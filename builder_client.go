@@ -82,7 +82,7 @@ func (b *builderClient) CmdRun(args string) error {
 	if b.image == "" {
 		return fmt.Errorf("Please provide a source image with `from` prior to run")
 	}
-	config, _, err := ParseRun([]string{b.image, "/bin/sh", "-c", args}, nil)
+	config, _, _, err := ParseRun([]string{b.image, "/bin/sh", "-c", args}, nil)
 	if err != nil {
 		return err
 	}

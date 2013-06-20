@@ -295,7 +295,8 @@ func findAvailalblePort(runtime *Runtime, port int) (*Container, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		if strings.Contains(err.Error(), "address already in use") {
 			return nil, nil
 		}
@@ -405,7 +406,8 @@ func TestRestore(t *testing.T) {
 	defer runtime1.Destroy(container2)
 
 	// Start the container non blocking
-	if err := container2.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container2.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 

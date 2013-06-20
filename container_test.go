@@ -71,7 +71,8 @@ func TestMultipleAttachRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	l1, err := bufio.NewReader(stdout1).ReadString('\n')
@@ -112,7 +113,7 @@ func TestMultipleAttachRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container.Start(); err != nil {
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,7 +308,8 @@ func TestCommitAutoRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container2.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container2.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	container2.Wait()
@@ -389,7 +391,8 @@ func TestCommitRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container2.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container2.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	container2.Wait()
@@ -437,7 +440,8 @@ func TestStart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 
@@ -447,7 +451,7 @@ func TestStart(t *testing.T) {
 	if !container.State.Running {
 		t.Errorf("Container should be running")
 	}
-	if err := container.Start(); err == nil {
+	if err := container.Start(hostConfig); err == nil {
 		t.Fatalf("A running containter should be able to be started")
 	}
 
@@ -529,7 +533,8 @@ func TestKillDifferentUser(t *testing.T) {
 	if container.State.Running {
 		t.Errorf("Container shouldn't be running")
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 
@@ -576,7 +581,8 @@ func TestKill(t *testing.T) {
 	if container.State.Running {
 		t.Errorf("Container shouldn't be running")
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 
@@ -701,7 +707,8 @@ func TestRestartStdin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := io.WriteString(stdin, "hello world"); err != nil {
@@ -731,7 +738,7 @@ func TestRestartStdin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container.Start(); err != nil {
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := io.WriteString(stdin, "hello world #2"); err != nil {
@@ -893,10 +900,11 @@ func TestMultipleContainers(t *testing.T) {
 	defer runtime.Destroy(container2)
 
 	// Start both containers
-	if err := container1.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container1.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
-	if err := container2.Start(); err != nil {
+	if err := container2.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 
@@ -948,7 +956,8 @@ func TestStdin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	defer stdin.Close()
@@ -995,7 +1004,8 @@ func TestTty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	defer stdin.Close()
@@ -1037,7 +1047,8 @@ func TestEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stdout.Close()
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	container.Wait()
@@ -1173,7 +1184,8 @@ func BenchmarkRunParallel(b *testing.B) {
 				return
 			}
 			defer runtime.Destroy(container)
-			if err := container.Start(); err != nil {
+			hostConfig := &HostConfig{}
+			if err := container.Start(hostConfig); err != nil {
 				complete <- err
 				return
 			}
@@ -1223,7 +1235,6 @@ func TestBindMounts(t *testing.T) {
 	container, err := NewBuilder(runtime).Create(&Config{
 		Image: GetTestImage(runtime).ID,
 		Cmd:   []string{"ls", "/tmp"},
-		Binds: []string{bind_str},
 	},
 	)
 	if err != nil {
@@ -1236,7 +1247,10 @@ func TestBindMounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stdout.Close()
-	if err := container.Start(); err != nil {
+	hostConfig := &HostConfig{
+		Binds: []string{bind_str},
+	}
+	if err := container.Start(hostConfig); err != nil {
 		t.Fatal(err)
 	}
 	container.Wait()
@@ -1252,7 +1266,6 @@ func TestBindMounts(t *testing.T) {
 	container2, err := NewBuilder(runtime).Create(&Config{
 		Image: GetTestImage(runtime).ID,
 		Cmd:   []string{"touch", "/tmp/holla"},
-		Binds: []string{bind_str2},
 	},
 	)
 	if err != nil {
@@ -1260,7 +1273,10 @@ func TestBindMounts(t *testing.T) {
 	}
 	defer runtime.Destroy(container2)
 
-	if err := container2.Start(); err != nil {
+	hostConfig2 := &HostConfig{
+		Binds: []string{bind_str2},
+	}
+	if err := container2.Start(hostConfig2); err != nil {
 		t.Fatal(err)
 	}
 	container2.Wait()
