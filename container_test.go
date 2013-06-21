@@ -1280,14 +1280,39 @@ func TestBindMounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	container2.Wait()
-	fileinfo, err := ioutil.ReadDir(tmpDir)
+	_, err = ioutil.ReadFile(tmpDir + "/holla")
+	if err != nil {
+		t.Fatal("Container failed to write to bind mount")
+	}
+	// test mounting to a directory that doesn't exist yet
+	bind_str3 := fmt.Sprintf("%s:/missing", tmpDir)
+	container3, err := NewBuilder(runtime).Create(&Config{
+		Image: GetTestImage(runtime).ID,
+		Cmd:   []string{"ls", "/missing"},
+	},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range fileinfo {
-		if f.Name() == "holla" {
-			return
-		}
+	defer runtime.Destroy(container3)
+
+	stdout3, err := container3.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("Container failed to write to bind mount")
+	defer stdout3.Close()
+	hostConfig3 := &HostConfig{
+		Binds: []string{bind_str3},
+	}
+	if err := container3.Start(hostConfig3); err != nil {
+		t.Fatal(err)
+	}
+	container3.Wait()
+	output3, err := ioutil.ReadAll(stdout3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(output3), "touch-me") {
+		t.Fatal("Container failed to read missing bind mount directory")
+	}
 }

@@ -518,6 +518,11 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 			return fmt.Errorf("Invalid bind specification: %s", bind)
 		}
 
+		// Try to create any missing container destination directories
+		if err := os.MkdirAll(path.Join(container.RootfsPath(), dst), 0755); err != nil {
+			return nil
+		}
+
 		bindMap := BindMap{
 			SrcPath: src,
 			DstPath: dst,
