@@ -1339,4 +1339,28 @@ func TestBindMounts(t *testing.T) {
 	if !strings.Contains(string(output3), "touch-me") {
 		t.Fatal("Container failed to read missing bind mount directory")
 	}
+	// test mounting to an illegal destination directory
+	bind_str4 := fmt.Sprintf("%s:.", tmpDir)
+	container4, err := NewBuilder(runtime).Create(&Config{
+		Image: GetTestImage(runtime).ID,
+		Cmd:   []string{"ls", "."},
+	},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Destroy(container4)
+
+	stdout4, err := container4.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdout4.Close()
+	hostConfig4 := &HostConfig{
+		Binds: []string{bind_str4},
+	}
+	if err := container4.Start(hostConfig4); err == nil {
+		t.Fatal("Container bind mounted illegal directory")
+	}
+
 }

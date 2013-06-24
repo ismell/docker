@@ -503,6 +503,9 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 
 	// Create the requested bind mounts
 	binds := []BindMap{}
+	// Define illegal container destinations
+	illegal_dsts := []string{"/", "."}
+
 	for _, bind := range hostConfig.Binds {
 		var src, dst, mode string
 		arr := strings.Split(bind, ":")
@@ -516,6 +519,13 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 			mode = arr[2]
 		} else {
 			return fmt.Errorf("Invalid bind specification: %s", bind)
+		}
+
+		// Bail if trying to mount to an illegal destination
+		for _, illegal := range illegal_dsts {
+			if dst == illegal {
+				return fmt.Errorf("Illegal bind destination: %s", dst)
+			}
 		}
 
 		// Try to create any missing container destination directories
