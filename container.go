@@ -529,13 +529,13 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 		}
 
 		// Create a corresponding container volume if one doesn't already exist
-                if _, exists := container.Volumes[dst]; exists == false {
-		    c, err := container.runtime.volumes.Create(nil, container, "", "", nil)
-		    if err != nil {
-			return err
-		    }
-		    container.Volumes[dst] = c.ID
-                }
+		if _, exists := container.Volumes[dst]; exists == false {
+			c, err := container.runtime.volumes.Create(nil, container, "", "", nil)
+			if err != nil {
+				return err
+			}
+			container.Volumes[dst] = c.ID
+		}
 
 		// Try to create any missing container destination directories
 		if err := os.MkdirAll(path.Join(container.RootfsPath(), dst), 0755); err != nil {
