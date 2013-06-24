@@ -88,7 +88,7 @@ type BindMap struct {
 }
 
 func ParseRun(args []string, capabilities *Capabilities) (*Config, *HostConfig, *flag.FlagSet, error) {
-	cmd := Subcmd("run", "[OPTIONS] IMAGE COMMAND [ARG...]", "Run a command in a new container")
+	cmd := Subcmd("run", "[OPTIONS] IMAGE [COMMAND] [ARG...]", "Run a command in a new container")
 	if len(args) > 0 && args[0] != "--help" {
 		cmd.SetOutput(ioutil.Discard)
 	}
@@ -683,7 +683,6 @@ func (container *Container) waitLxc() error {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	panic("Unreachable")
 }
 
 func (container *Container) monitor() {
@@ -873,8 +872,6 @@ func (container *Container) WaitTimeout(timeout time.Duration) error {
 	case <-done:
 		return nil
 	}
-
-	panic("Unreachable")
 }
 
 func (container *Container) EnsureMounted() error {
