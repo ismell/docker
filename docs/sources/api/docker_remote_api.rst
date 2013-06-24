@@ -44,7 +44,7 @@ List containers (/containers/json):
 
 Start containers (/containers/<id>/start):
 
-- You must now pass host-specific configuration (e.g. bind mounts) in the POST body for start calls (can be empty {})
+- You can now pass host-specific configuration (e.g. bind mounts) in the POST body for start calls 
 
 :doc:`docker_remote_api_v1.2`
 *****************************

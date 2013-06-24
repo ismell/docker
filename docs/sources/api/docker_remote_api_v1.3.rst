@@ -314,7 +314,7 @@ Start a container
            HTTP/1.1 204 No Content
            Content-Type: text/plain
 
-        :jsonparam hostConfig: the container's host configuration
+        :jsonparam hostConfig: the container's host configuration (optional)
         :statuscode 200: no error
         :statuscode 404: no such container
         :statuscode 500: server error

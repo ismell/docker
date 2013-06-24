@@ -553,8 +553,11 @@ func deleteImages(srv *Server, version float64, w http.ResponseWriter, r *http.R
 func postContainersStart(srv *Server, version float64, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	hostConfig := &HostConfig{}
 
-	if err := json.NewDecoder(r.Body).Decode(hostConfig); err != nil {
-		return err
+	// allow a nil body for backwards compatibility
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(hostConfig); err != nil {
+			return err
+		}
 	}
 
 	if vars == nil {
