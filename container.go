@@ -142,6 +142,15 @@ func ParseRun(args []string, capabilities *Capabilities) (*Config, *HostConfig, 
 			}
 		}
 	}
+
+	// add any bind targets to the list of container volumes
+	type empty struct{}
+	for _, bind := range flBinds {
+		arr := strings.Split(bind, ":")
+		dstDir := arr[1]
+		flVolumes[dstDir] = empty{}
+	}
+
 	parsedArgs := cmd.Args()
 	runCmd := []string{}
 	image := ""
@@ -526,20 +535,6 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 			if dst == illegal {
 				return fmt.Errorf("Illegal bind destination: %s", dst)
 			}
-		}
-
-		// Create a corresponding container volume if one doesn't already exist
-		if _, exists := container.Volumes[dst]; exists == false {
-			c, err := container.runtime.volumes.Create(nil, container, "", "", nil)
-			if err != nil {
-				return err
-			}
-			container.Volumes[dst] = c.ID
-		}
-
-		// Try to create any missing container destination directories
-		if err := os.MkdirAll(path.Join(container.RootfsPath(), dst), 0755); err != nil {
-			return nil
 		}
 
 		bindMap := BindMap{
