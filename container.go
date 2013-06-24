@@ -124,7 +124,7 @@ func ParseRun(args []string, capabilities *Capabilities) (*Config, *HostConfig, 
 	flVolumesFrom := cmd.String("volumes-from", "", "Mount volumes from the specified container")
 
 	var flBinds ListOpts
-	cmd.Var(&flBinds, "b", "Bind mount a volume from the host")
+	cmd.Var(&flBinds, "b", "Bind mount a volume from the host (e.g. -b /host:/container)")
 
 	if err := cmd.Parse(args); err != nil {
 		return nil, nil, cmd, err
