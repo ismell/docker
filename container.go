@@ -52,6 +52,9 @@ type Container struct {
 
 	waitLock chan struct{}
 	Volumes  map[string]string
+	// Store rw/ro in a separate structure to preserve reserve-compatibility on-disk.
+	// Easier than migrating older container configs :)
+	VolumesRW map[string]bool
 }
 
 type Config struct {
@@ -479,6 +482,7 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 		container.Config.MemorySwap = -1
 	}
 	container.Volumes = make(map[string]string)
+	container.VolumesRW = make(map[string]bool)
 
 	// Create the requested bind mounts
 	binds := make(map[string]BindMap)
@@ -523,6 +527,9 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 		// If an external bind is defined for this volume, use that as a source
 		if bindMap, exists := binds[volPath]; exists {
 			container.Volumes[volPath] = bindMap.SrcPath
+			if strings.ToLower(bindMap.Mode) == "rw" {
+				container.VolumesRW[volPath] = true
+			}
 			// Otherwise create an directory in $ROOT/volumes/ and use that
 		} else {
 			c, err := container.runtime.volumes.Create(nil, container, "", "", nil)
@@ -534,6 +541,7 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 				return err
 			}
 			container.Volumes[volPath] = srcPath
+			container.VolumesRW[volPath] = true // RW by default
 		}
 		// Create the mountpoint
 		if err := os.MkdirAll(path.Join(container.RootfsPath(), volPath), 0755); err != nil {
@@ -556,6 +564,7 @@ func (container *Container) Start(hostConfig *HostConfig) error {
 			container.Volumes[volPath] = id
 		}
 	}
+	container.VolumesRW = make(map[string]bool)
 
 	if err := container.generateLXCConfig(); err != nil {
 		return err
