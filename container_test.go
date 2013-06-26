@@ -1239,97 +1239,34 @@ func BenchmarkRunParallel(b *testing.B) {
 	}
 }
 
-func TestBindMounts(t *testing.T) {
-	runtime, err := newTestRuntime()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer nuke(runtime)
+func tempDir(t *testing.T) string {
 	tmpDir, err := ioutil.TempDir("", "docker-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmpFile := path.Join(tmpDir, "touch-me")
-	_, err = os.Create(tmpFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// test reading from bind mount
-	bind_str := fmt.Sprintf("%s:/tmp:ro", tmpDir)
-	container, err := NewBuilder(runtime).Create(&Config{
-		Image: GetTestImage(runtime).ID,
-		Cmd:   []string{"ls", "/tmp"},
-	},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer runtime.Destroy(container)
+	return tmpDir
+}
 
-	stdout, err := container.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stdout.Close()
-	hostConfig := &HostConfig{
-		Binds: []string{bind_str},
-	}
-	if err := container.Start(hostConfig); err != nil {
-		t.Fatal(err)
-	}
-	container.Wait()
-	output, err := ioutil.ReadAll(stdout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(output), "touch-me") {
+func TestBindMounts(t *testing.T) {
+	r := mkRuntime(t)
+	defer nuke(r)
+	tmpDir := tempDir(t)
+	defer os.RemoveAll(tmpDir)
+	writeFile(path.Join(tmpDir, "touch-me"), "", t)
+
+	// Test reading from a read-only bind mount
+	stdout, _ := runContainer(r, []string{"-b", fmt.Sprintf("%s:/tmp:ro", tmpDir), "_", "ls", "/tmp"}, t)
+	if !strings.Contains(stdout, "touch-me") {
 		t.Fatal("Container failed to read from bind mount")
 	}
+
 	// test writing to bind mount
-	bind_str2 := fmt.Sprintf("%s:/tmp:rw", tmpDir)
-	container2, err := NewBuilder(runtime).Create(&Config{
-		Image: GetTestImage(runtime).ID,
-		Cmd:   []string{"touch", "/tmp/holla"},
-	},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer runtime.Destroy(container2)
+	runContainer(r, []string{"-b", fmt.Sprintf("%s:/tmp:rw", tmpDir), "_", "touch", "/tmp/holla"}, t)
+	readFile("/tmp/holla", t) // Will fail if the file doesn't exist
 
-	hostConfig2 := &HostConfig{
-		Binds: []string{bind_str2},
-	}
-	if err := container2.Start(hostConfig2); err != nil {
-		t.Fatal(err)
-	}
-	container2.Wait()
-	_, err = ioutil.ReadFile(tmpDir + "/holla")
-	if err != nil {
-		t.Fatal("Container failed to write to bind mount")
-	}
 	// test mounting to an illegal destination directory
-	bind_str3 := fmt.Sprintf("%s:.", tmpDir)
-	container3, err := NewBuilder(runtime).Create(&Config{
-		Image: GetTestImage(runtime).ID,
-		Cmd:   []string{"ls", "."},
-	},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer runtime.Destroy(container3)
-
-	stdout3, err := container3.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stdout3.Close()
-	hostConfig3 := &HostConfig{
-		Binds: []string{bind_str3},
-	}
-	if err := container3.Start(hostConfig3); err == nil {
+	if _, err := runContainer(r, []string{"-b", fmt.Sprintf("%s:.", tmpDir), "ls", "."}, nil); err == nil {
 		t.Fatal("Container bind mounted illegal directory")
-	}
 
+	}
 }
